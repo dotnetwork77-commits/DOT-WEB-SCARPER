@@ -1,6 +1,5 @@
 """
-detector.py — Detect Ollama / LM Studio on all known ports.
-Checks port 11435 first (our moved LM Studio port), then 1234 (default).
+detector.py — Detect running local AI services (Ollama, LM Studio).
 """
 
 import requests
@@ -18,48 +17,29 @@ _SERVICES = [
     },
     {
         "service": "lmstudio",
-        "port": 11435,
-        "probes": [
-            "http://localhost:11435/v1/models",
-            "http://localhost:11435/api/v0/models",
-            "http://localhost:11435/api/v1/models",
-        ],
-    },
-    {
-        "service": "lmstudio",
         "port": 1234,
         "probes": [
             "http://localhost:1234/v1/models",
             "http://localhost:1234/api/v0/models",
-            "http://localhost:1234/api/v1/models",
         ],
     },
 ]
 
 
 def check_services(verbose: bool = False) -> dict:
-    """
-    Probe all known ports. Returns first one that responds.
-    Never probes port 8000 (that's our own proxy).
-    """
     for entry in _SERVICES:
         for url in entry["probes"]:
             try:
                 resp = requests.get(url, timeout=_TIMEOUT)
                 if verbose:
                     print(f"\u2713 {entry['service'].capitalize()} detected "
-                          f"on port {entry['port']} (HTTP {resp.status_code})")
+                          f"on port {entry['port']}")
                 return {"service": entry["service"], "port": entry["port"]}
-            except requests.exceptions.ConnectionError:
-                continue
-            except requests.exceptions.Timeout:
-                continue
-            except Exception:
+            except requests.exceptions.RequestException:
                 continue
 
     if verbose:
-        print("\u2717 No AI service detected.")
-        print("  \u2192 LM Studio: Developer tab \u2192 Server Settings \u2192 Port: 11435 \u2192 Start Server")
+        print("\u2717 No AI service detected. Start LM Studio and load a model.")
     return {"service": None, "port": None}
 
 

@@ -14,14 +14,8 @@ def main() -> None:
     service_info = detector.check_services(verbose=True)
 
     if service_info["service"] is None:
-        print()
         print("\u26a0  No AI service detected.")
-        print("   The UI will auto-detect once LM Studio is running.")
-        print()
-        print("   LM Studio setup:")
-        print("   1. Open LM Studio \u2192 Developer tab")
-        print("   2. Server Settings \u2192 change Port to 11435")
-        print("   3. Click 'Start Server'")
+        print("   Start LM Studio and load a model first.")
         print()
     else:
         print(f"\u2713 {service_info['service'].upper()} on port {service_info['port']}")

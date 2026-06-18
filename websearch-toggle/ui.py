@@ -1,10 +1,15 @@
 """
 ui.py — WebSearch Toggle floating window.
 
-Three modes:
-  1. LM Studio Direct  — proxy on :1234, LM Studio server on :11435
-  2. Open WebUI        — proxy on :8000, LM Studio server on :1234
-  3. Clipboard         — manual Ctrl+Shift+Enter inject
+IMPORTANT:
+  LM Studio's built-in chat talks to the model DIRECTLY — it does NOT
+  go through the HTTP server port. A proxy CANNOT intercept its requests.
+
+  Two working approaches:
+    1. Clipboard mode — works with ANY app including LM Studio's own chat
+       (copy prompt → Ctrl+Shift+Enter → paste back)
+    2. Proxy mode — works ONLY with external clients like Open WebUI
+       (point their API URL to localhost:8000)
 """
 
 import tkinter as tk
@@ -25,26 +30,22 @@ def launch() -> None:
     window.attributes("-topmost", True)
     window.resizable(False, False)
 
-    # Mode selection
+    # ── Mode selection ──────────────────────────────────────────────────
     mode_frame = ttk.LabelFrame(window, text="How are you using it?", padding=8)
     mode_frame.pack(fill="x", padx=10, pady=5)
-    mode = tk.StringVar(value="lmstudio_direct")
+    mode = tk.StringVar(value="clipboard")
 
     rb1 = ttk.Radiobutton(mode_frame,
-                          text="LM Studio Chat (Direct)  \u2190 recommended",
-                          variable=mode, value="lmstudio_direct")
-    rb2 = ttk.Radiobutton(mode_frame,
-                          text="Open WebUI / External Client",
-                          variable=mode, value="openwebui")
-    rb3 = ttk.Radiobutton(mode_frame,
-                          text="Clipboard (manual copy-paste)",
+                          text="LM Studio Chat (Clipboard)  \u2190 recommended",
                           variable=mode, value="clipboard")
+    rb2 = ttk.Radiobutton(mode_frame,
+                          text="Open WebUI / External (Proxy)",
+                          variable=mode, value="openwebui")
     rb1.pack(anchor="w")
     rb2.pack(anchor="w")
-    rb3.pack(anchor="w")
-    all_rbs = [rb1, rb2, rb3]
+    all_rbs = [rb1, rb2]
 
-    # Toggle button
+    # ── Toggle button ───────────────────────────────────────────────────
     toggle_frame = tk.Frame(window)
     toggle_frame.pack(fill="x", padx=10, pady=5)
     toggle_btn = tk.Button(
@@ -55,12 +56,12 @@ def launch() -> None:
     )
     toggle_btn.pack(fill="x")
 
-    # Status
+    # ── Status ──────────────────────────────────────────────────────────
     status_lbl = ttk.Label(window, font=("Helvetica", 9))
     status_lbl.pack(pady=2)
 
-    # Info box
-    info_frame = ttk.LabelFrame(window, text="Setup", padding=6)
+    # ── Info box ────────────────────────────────────────────────────────
+    info_frame = ttk.LabelFrame(window, text="How to use", padding=6)
     info_frame.pack(fill="x", padx=10, pady=3)
     info_lbl = ttk.Label(info_frame, text="",
                          foreground="#1a3a6e", wraplength=305,
@@ -71,81 +72,61 @@ def launch() -> None:
                          wraplength=320, font=("Helvetica", 8, "bold"))
     warn_lbl.pack(pady=1)
 
+    # ── Helpers ─────────────────────────────────────────────────────────
     def refresh_status():
         svc  = service_info.get("service") or "Not detected"
         port = service_info.get("port")
         if port:
             status_lbl.config(
-                text=f"\u25cf {svc.upper()} on port {port}  \u2713",
+                text=f"\u25cf {svc.upper()} detected on port {port}",
                 foreground="#1a6e2e"
             )
         else:
             status_lbl.config(
-                text="\u25cf Service: Not detected \u2014 start LM Studio server!",
+                text="\u25cf LM Studio not detected \u2014 start it first",
                 foreground="#c0392b"
             )
 
     def refresh_info(*_):
-        m    = mode.get()
-        port = service_info.get("port")
+        m = mode.get()
         warn_lbl.config(text="")
 
-        if m == "lmstudio_direct":
-            if port == 11435:
-                info_lbl.config(text=(
-                    "\u2713 LM Studio running on port 11435\n\n"
-                    "Toggle ON \u2192 proxy intercepts :1234 \u2192 :11435\n"
-                    "Chat in LM Studio normally \u2014 automatic! \u2713"
-                ))
-            elif port == 1234:
-                info_lbl.config(text=(
-                    "\u26a0 LM Studio is on port 1234 (default).\n\n"
-                    "Please change it to 11435:\n"
-                    "  LM Studio \u2192 Developer tab\n"
-                    "  \u2192 Server Settings \u2192 Port: 11435\n"
-                    "  \u2192 Stop Server \u2192 Start Server\n\n"
-                    "Then toggle ON here."
-                ))
-            else:
-                info_lbl.config(text=(
-                    "LM Studio server not detected.\n\n"
-                    "  LM Studio \u2192 Developer tab\n"
-                    "  \u2192 Server Settings \u2192 Port: 11435\n"
-                    "  \u2192 click 'Start Server'\n\n"
-                    "Then toggle ON here."
-                ))
-
-        elif m == "openwebui":
+        if m == "clipboard":
             info_lbl.config(text=(
-                "LM Studio server stays on port 1234.\n\n"
-                "Toggle ON \u2192 proxy runs on :8000\n\n"
-                "In Open WebUI \u2192 Settings \u2192 API URL:\n"
-                "  http://localhost:8000\n\n"
-                "Chat in Open WebUI \u2192 automatic \u2713"
+                "Clipboard mode works with every app.\n\n"
+                "1. Type your question in LM Studio\n"
+                "2. Copy it (Ctrl+A then Ctrl+C)\n"
+                "3. Press Ctrl+Shift+Enter\n"
+                "4. Paste back (Ctrl+A then Ctrl+V)\n"
+                "5. Press Enter to send\n\n"
+                "The web results are added to your prompt. \u2713"
             ))
-
         else:
+            port = service_info.get("port") or 1234
             info_lbl.config(text=(
-                "1. Copy your question (Ctrl+C)\n"
-                "2. Press Ctrl+Shift+Enter\n"
-                "3. Paste into LM Studio (Ctrl+V)\n\n"
-                "Web results are added automatically."
+                "Proxy mode \u2014 for Open WebUI / external apps only.\n\n"
+                "Toggle ON \u2192 proxy runs on :8000\n\n"
+                "In Open WebUI Settings, set API URL to:\n"
+                "  http://localhost:8000\n\n"
+                "Chat in Open WebUI \u2014 automatic web search \u2713\n\n"
+                "(Keep LM Studio server on port 1234)"
             ))
 
     mode.trace_add("write", refresh_info)
     refresh_status()
     refresh_info()
 
+    # ── Background poll ─────────────────────────────────────────────────
     def poll():
         nonlocal service_info
         info = detector.check_services(verbose=False)
         service_info = info
         refresh_status()
-        refresh_info()
         window.after(4000, poll)
 
     window.after(4000, poll)
 
+    # ── Toggle logic ────────────────────────────────────────────────────
     def toggle_click():
         nonlocal proxy_started, clipboard_started
 
@@ -154,68 +135,41 @@ def launch() -> None:
         m = mode.get()
 
         if turning_on:
-            port = service_info.get("port")
-
-            # First-time startup: check guards and launch threads
+            # First-time startup
             if not proxy_started and not clipboard_started:
-                if m in ("lmstudio_direct", "openwebui") and not port:
+                if m == "openwebui" and not service_info.get("port"):
                     warn_lbl.config(
-                        text="\u26a0 Start LM Studio server first!\n"
-                             "Developer tab \u2192 Port 11435 \u2192 Start Server"
-                    )
-                    return
-
-                if m == "lmstudio_direct" and port and port != 11435:
-                    warn_lbl.config(
-                        text="\u26a0 Change LM Studio server port to 11435 first!\n"
-                             "Developer tab \u2192 Server Settings \u2192 Port: 11435\n"
-                             "\u2192 Stop & Start Server"
+                        text="\u26a0 LM Studio not detected. Start it first."
                     )
                     return
 
                 for rb in all_rbs:
                     rb.config(state="disabled")
 
-                if m == "lmstudio_direct":
+                if m == "openwebui":
                     proxy_started = True
                     threading.Thread(
                         target=injector.start_proxy,
-                        args=(1234, 11435),
+                        args=(8000, service_info["port"]),
                         daemon=True,
                     ).start()
-
-                elif m == "openwebui":
-                    proxy_started = True
-                    threading.Thread(
-                        target=injector.start_proxy,
-                        args=(8000, port),
-                        daemon=True,
-                    ).start()
-
-                elif m == "clipboard":
+                else:
                     clipboard_started = True
                     threading.Thread(
                         target=injector.clipboard_mode,
                         daemon=True,
                     ).start()
 
-            # Re-enable injection (toggle was OFF → ON)
+            # Re-enable injection
             toggle_btn.config(text="Web Search: ON", bg="#4CAF50")
             warn_lbl.config(text="")
             injector.set_toggle(True)
 
-            if m == "lmstudio_direct":
+            if m == "openwebui":
                 info_lbl.config(text=(
-                    "\u2713 Proxy running: :1234 \u2192 :11435\n\n"
-                    "Just chat in LM Studio normally.\n"
-                    "Every message gets live web results. \u2713"
-                ))
-            elif m == "openwebui":
-                info_lbl.config(text=(
-                    f"\u2713 Proxy: :8000 \u2192 :{port}\n\n"
-                    "Open WebUI \u2192 Settings \u2192 API URL:\n"
-                    "  http://localhost:8000\n\n"
-                    "Chat in Open WebUI \u2014 automatic \u2713"
+                    f"\u2713 Proxy on :8000 \u2192 :{service_info['port']}\n\n"
+                    "Open WebUI \u2192 API URL:\n"
+                    "  http://localhost:8000"
                 ))
 
         else:
