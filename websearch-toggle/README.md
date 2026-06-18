@@ -5,6 +5,21 @@ Free, open source, runs 100% on your computer.
 
 ---
 
+## How It Works
+
+```
+LM Studio Chat → :1234 (our proxy adds search results) → :11435 (real LM Studio)
+```
+
+LM Studio's chat always talks to port 1234. We put our proxy **in between**:
+1. Move LM Studio server to port **11435**
+2. Our proxy runs on **port 1234** (the chat's default target)
+3. Chat sends to 1234 → proxy adds web results → forwards to 11435
+
+**Zero chat reconfiguration needed.**
+
+---
+
 ## Install
 
 ```bash
@@ -14,109 +29,78 @@ pip install -r requirements.txt
 python main.py
 ```
 
-## Requirements
-
-- Python 3.8 or higher
-- Ollama **or** LM Studio installed and running
-
 ---
 
-## How To Use — Step by Step
+## Step-by-Step Guide (LM Studio Direct — Recommended)
 
-### Step 1: Open LM Studio and load a model
+### Step 1: Load a model in LM Studio
+- Open LM Studio
+- Go to **Chat** tab
+- Select a model from the dropdown (e.g., Gemma, Llama)
+- Wait until it says **"Model loaded"**
 
-1. Open **LM Studio**
-2. Click the **Search** tab on the left
-3. Search for a model (e.g., `gemma`, `llama`, `mistral`)
-4. Click **Download** on the model you want
-5. Once downloaded, click the **Chat** tab on the left
-6. Select your model from the dropdown at the top
-7. Wait for it to load (you'll see "Model loaded" message)
-
-### Step 2: Start the LM Studio server
-
-1. Click the **Developer** tab on the left (looks like `</>`)
-2. You'll see a **Start Server** button — click it
-3. The button will change to **Stop Server** and show a green status
-4. Note the **Port** number (default is `1234`) — don't change it yet
+### Step 2: Change LM Studio's server port to 11435
+- Click the **Developer** tab (looks like `</>`)
+- Find **Server Settings** section
+- Change the **Port** field from `1234` to **`11435`**
+- Click **Start Server** (or **Restart Server**)
+- You should see a green status indicator
 
 ### Step 3: Run WebSearch Toggle
+- Open **Command Prompt** (or Terminal)
+- Type: `cd C:\Users\neera\DOT-WEB-SCARPER\websearch-toggle`
+- Type: `python main.py`
+- A small window will appear
 
-1. Open **Command Prompt** or **Terminal**
-2. Type this command and press Enter:
-   ```
-   cd C:\Users\neera\DOT-WEB-SCARPER\websearch-toggle
-   python main.py
-   ```
-3. A small floating window will appear titled **"WebSearch Toggle"**
+### Step 4: Start the proxy
+- The window shows **"LM Studio Chat (Direct)"** is selected
+- Click the **red button** → it turns **green** and says **"Web Search: ON"**
+- The proxy is now running on port 1234, forwarding to LM Studio on 11435
 
-### Step 4: Configure the toggle
-
-1. In the popup window, the top option **"LM Studio / Open WebUI (Proxy)"** should be selected (this is the recommended mode)
-2. The status line should show: `Service: lmstudio (real port: 1234)`
-3. Click the **red button** that says **"Web Search: OFF"** — it turns **green** and says **"Web Search: ON"**
-4. The hint will update to show a message about pointing LM Studio to localhost:8000
-
-### Step 5: Change LM Studio's port to 8000
-
-This is the most important step. The WebSearch Toggle runs a proxy on port 8000 that adds search results to your questions. You need to tell LM Studio to send requests to port 8000 instead of port 1234.
-
-1. Go back to LM Studio's **Developer** tab
-2. Find the **Port** field (it says `1234`)
-3. **Change it to `8000`**
-4. Click **Restart Server** (the Start Server button again)
-5. You'll see the green status reappear — now LM Studio's chat will send requests to the WebSearch Toggle proxy
-
-### Step 6: Chat normally
-
-1. Go to the **Chat** tab in LM Studio
-2. Type any question in the chat box, for example: `What is the capital of France?`
-3. Press **Enter**
-4. The toggle proxy will automatically:
-   - Take your question
-   - Search the internet for answers
-   - Add the search results to your question
-   - Forward it to Gemma/Llama in LM Studio
-5. Gemma will respond with an answer that includes web search information
+### Step 5: Chat normally
+- Go to LM Studio **Chat** tab
+- Type any question and press **Enter**
+- Web search results are automatically added to your question
+- The model sees the search results and answers with real information
 
 ---
 
-## How It Works
+## Other Modes
 
-```
-You type a question → WebSearch Toggle (port 8000) adds search results
-         → Forwards to LM Studio (port 1234) → Gemma answers
-```
+### Copy-Paste Mode (Clipboard)
+For when you can't change the server port.
 
-The toggle acts as a **middleman**. Your question goes to port 8000 first, where web search results are attached, then it's sent to LM Studio's real port (1234). This all happens automatically in the background.
+1. In the toggle window, select **Clipboard (manual copy-paste)**
+2. Click toggle ON (green)
+3. Type question in LM Studio → **Copy** (Ctrl+C)
+4. Press **Ctrl+Shift+Enter**
+5. **Paste** back into LM Studio (Ctrl+V) → press Enter
+
+### Open WebUI / External Client
+For users of Open WebUI, AnythingLLM, etc.
+
+1. In the toggle window, select **Open WebUI / External Client**
+2. **Keep** LM Studio server on port 1234 (default)
+3. Click toggle ON (green) — proxy runs on port 8000
+4. In Open WebUI Settings → change API URL to `http://localhost:8000`
+5. Chat normally — automatic web search
 
 ---
 
-## Modes
+## Search Result Format
 
-### Proxy Mode (Recommended) — Works with LM Studio's own chat
+Results look like this inside your prompt:
 
-**Best for:** Most users. No copy-paste needed. Just type and send.
+```
+[Web Search Results — 2025-06-17]
+Query: "capital of France"
 
-| Step | Action |
-|------|--------|
-| 1 | Select **LM Studio / Open WebUI (Proxy)** in the toggle window |
-| 2 | Click toggle to turn it **ON** (green) |
-| 3 | In LM Studio Developer tab, change port to **8000**, restart server |
-| 4 | Type any question in LM Studio Chat and press Enter |
-| 5 | Web results are added automatically — no extra steps |
+1. Paris - Wikipedia
+   Paris is the capital and largest city of France...
+   Source: https://en.wikipedia.org/wiki/Paris
 
-### Clipboard Mode — Works with any app
-
-**Best for:** When you can't change the server port.
-
-| Step | Action |
-|------|--------|
-| 1 | Select **LM Studio Direct (Clipboard)** |
-| 2 | Click toggle to turn it **ON** (green) |
-| 3 | Type your question in LM Studio and **copy it** (Ctrl+C) |
-| 4 | Press **Ctrl+Shift+Enter** |
-| 5 | Go back to LM Studio, **paste** (Ctrl+V), press Enter |
+Note: Use the above results to inform your answer. Cite sources where relevant.
+```
 
 ---
 
@@ -124,30 +108,22 @@ The toggle acts as a **middleman**. Your question goes to port 8000 first, where
 
 | Problem | Fix |
 |---------|-----|
-| **"No AI service detected"** | Make sure LM Studio is running and a model is loaded. Wait 5 seconds for the auto-detect. |
-| **LM Studio says "Connection refused"** | You changed the port to 8000 but the toggle isn't running. Run `python main.py` and turn the toggle ON first. |
-| **Gemma says "I can't access the internet"** | The search results are added to the question itself, not to Gemma. Gemma reads the search results from your question text. If you see "Web Search Results" in your question after sending, it's working. |
-| **Toggle button is disabled** | Click it to turn it ON (green). If it's red and says OFF, click it. |
-| **Clipboard mode hotkey not working** | Run Command Prompt as **Administrator** (right-click → Run as Administrator), then run `python main.py` again. |
-| **No search results appearing** | Check your internet connection. DuckDuckGo requires internet access. |
+| "Connection refused" | Make sure LM Studio Developer tab → Start Server is running |
+| No web results in answer | Check toggle is **ON** (green). Check internet connection. |
+| LM Studio can't start on 11435 | Port already in use. Restart LM Studio completely. |
+| Clipboard hotkey not working | Run Command Prompt as Administrator |
+| Proxy already running | Close the toggle window and reopen |
 
 ---
 
 ## Features
 
 - ✅ Free DuckDuckGo search — no API key needed
-- ✅ Auto-detects Ollama and LM Studio
-- ✅ Proxy mode — works with LM Studio's own chat
-- ✅ Clipboard mode — works with any app
+- ✅ Works with LM Studio's own chat — no extra apps needed
+- ✅ Zero chat reconfiguration — proxy intercepts automatically
 - ✅ Streaming support — responses appear as they're generated
 - ✅ Source URLs in results — model can cite references
+- ✅ Clipboard mode for any other app
 - ✅ Always-on-top floating window
-- ✅ Zero interference when OFF
 - ✅ Cross-platform (Windows, Mac, Linux)
 - ✅ Open source, MIT License
-
----
-
-## License
-
-MIT License — free for everyone to use, modify, and share.

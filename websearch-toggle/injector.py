@@ -1,20 +1,19 @@
 """
 injector.py — Proxy server and clipboard injection for WebSearch Toggle.
 
-Bugs fixed over original:
-1. Streaming (SSE) responses now forwarded correctly chunk-by-chunk instead
-   of being buffered entirely in memory (fixes Open WebUI / streaming clients).
-2. Content-Length header is recalculated after search text is injected so the
-   upstream response isn't rejected by strict HTTP clients.
-3. CORS headers (Access-Control-Allow-Origin, etc.) are preserved so
-   browser-based WebUIs (Open WebUI) don't get blocked.
-4. OPTIONS pre-flight requests are handled so CORS works end-to-end.
-5. toggle_on is now protected by a threading.Lock for thread safety.
-6. clipboard_mode no longer calls keyboard.wait() (blocking forever);
-   uses an Event so it can be stopped cleanly.
-7. Null-guard: proxy won't start if target_port is None.
-8. Added User-Agent header to forwarded requests (some servers reject requests
-   without one).
+KEY ARCHITECTURE CHANGE:
+  LM Studio's built-in chat UI cannot be redirected to a custom port.
+  It always sends to its own internal server.
+
+  Solution:
+    - Move LM Studio server to port 11435 (in LM Studio Developer tab)
+    - Our proxy runs on port 1234 (the default LM Studio port)
+    - LM Studio chat → port 1234 (our proxy) → port 11435 (real LM Studio)
+    - The chat UI never needs any reconfiguration!
+
+  For Open WebUI / external clients:
+    - Keep LM Studio on 1234, run proxy on 8000
+    - Point Open WebUI to localhost:8000
 """
 
 import json
@@ -27,42 +26,16 @@ try:
     _PYPERCLIP_OK = True
 except ImportError:
     _PYPERCLIP_OK = False
-    print("Warning: pyperclip not installed — clipboard mode unavailable.")
 
 try:
     import keyboard
     _KEYBOARD_OK = True
 except ImportError:
     _KEYBOARD_OK = False
-    print("Warning: keyboard not installed — clipboard mode unavailable.")
-
-
-# ---------------------------------------------------------------------------
-# Thread-safe toggle state
-# ---------------------------------------------------------------------------
 
 _lock = threading.Lock()
 _toggle_on = False
 _clipboard_stop_event = threading.Event()
-
-
-def set_toggle(state: bool) -> None:
-    """Set the web-search toggle state (thread-safe)."""
-    global _toggle_on
-    with _lock:
-        _toggle_on = state
-    print(f"Web Search: {'ON' if state else 'OFF'}")
-
-
-def get_toggle() -> bool:
-    """Read the web-search toggle state (thread-safe)."""
-    with _lock:
-        return _toggle_on
-
-
-# ---------------------------------------------------------------------------
-# Proxy mode
-# ---------------------------------------------------------------------------
 
 _HOP_BY_HOP = {
     "transfer-encoding", "content-encoding", "connection",
@@ -75,6 +48,18 @@ _CORS_HEADERS = {
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
 }
+
+
+def set_toggle(state: bool) -> None:
+    global _toggle_on
+    with _lock:
+        _toggle_on = state
+    print(f"Web Search: {'ON' if state else 'OFF'}")
+
+
+def get_toggle() -> bool:
+    with _lock:
+        return _toggle_on
 
 
 class ProxyHandler(BaseHTTPRequestHandler):
@@ -108,7 +93,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
             path = self.path or "/v1/chat/completions"
             target_url = f"http://localhost:{target_port}{path}"
-            print(f"\u2192 Forwarding to: {target_url}")
+            print(f"\u2192 {target_url}")
 
             upstream = requests.post(
                 target_url,
@@ -123,14 +108,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
             )
 
             self.send_response(upstream.status_code)
-
             for key, value in upstream.headers.items():
                 if key.lower() not in _HOP_BY_HOP:
                     self.send_header(key, value)
-
             for k, v in _CORS_HEADERS.items():
                 self.send_header(k, v)
-
             self.end_headers()
 
             for chunk in upstream.iter_content(chunk_size=4096):
@@ -144,9 +126,29 @@ class ProxyHandler(BaseHTTPRequestHandler):
             print(f"Proxy error: {exc}")
             self._error(500, str(exc))
 
-    def _error(self, code: int, message: str) -> None:
+    def do_GET(self):
+        """Forward GET requests too (e.g. /v1/models)."""
         try:
-            payload = json.dumps({"error": message}).encode("utf-8")
+            target_port = self.server.target_port
+            path = self.path or "/v1/models"
+            target_url = f"http://localhost:{target_port}{path}"
+
+            upstream = requests.get(target_url, timeout=10)
+
+            self.send_response(upstream.status_code)
+            for key, value in upstream.headers.items():
+                if key.lower() not in _HOP_BY_HOP:
+                    self.send_header(key, value)
+            for k, v in _CORS_HEADERS.items():
+                self.send_header(k, v)
+            self.end_headers()
+            self.wfile.write(upstream.content)
+        except Exception as exc:
+            self._error(500, str(exc))
+
+    def _error(self, code, message):
+        try:
+            payload = json.dumps({"error": message}).encode()
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
@@ -163,36 +165,33 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
 def _inject_search_results(data: dict) -> dict:
     from search import fetch_results
-
     messages = data.get("messages", [])
     if not messages:
         return data
-
     for i in range(len(messages) - 1, -1, -1):
         if messages[i].get("role") == "user":
             query = messages[i].get("content", "")
             if not isinstance(query, str):
                 break
-            print(f"  \u21b3 Fetching web results for: {query[:70]}\u2026")
+            print(f"  \u21b3 Searching: {query[:70]}\u2026")
             results = fetch_results(query)
             if results:
                 messages[i]["content"] = query + "\n\n" + results
-                print("  \u21b3 Search results injected.")
+                print("  \u21b3 Injected \u2713")
             else:
-                print("  \u21b3 No search results returned.")
+                print("  \u21b3 No results.")
             break
-
     return data
 
 
-def start_proxy(target_port: int) -> None:
+def start_proxy(proxy_port: int, target_port: int) -> None:
+    """Start proxy on proxy_port, forwarding to target_port."""
     if not target_port:
-        print("Proxy not started: target port is unknown.")
+        print("Proxy not started: target port unknown.")
         return
-
-    server = HTTPServer(("localhost", 8000), ProxyHandler)
+    server = HTTPServer(("localhost", proxy_port), ProxyHandler)
     server.target_port = target_port
-    print(f"Proxy listening on :8000  \u2192  forwarding to :{target_port}")
+    print(f"Proxy listening on :{proxy_port}  \u2192  :{target_port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -201,41 +200,35 @@ def start_proxy(target_port: int) -> None:
         server.server_close()
 
 
-# ---------------------------------------------------------------------------
-# Clipboard mode
-# ---------------------------------------------------------------------------
-
 def clipboard_mode() -> None:
     if not _PYPERCLIP_OK or not _KEYBOARD_OK:
         print("Clipboard mode unavailable: install pyperclip and keyboard.")
         return
-
-    print("Clipboard mode active. Press Ctrl+Shift+Enter to inject search results.")
+    print("Clipboard mode: Press Ctrl+Shift+Enter to inject search results.")
     _clipboard_stop_event.clear()
 
     def on_hotkey():
         if not get_toggle():
-            print("Web search is OFF \u2014 toggle it ON first.")
+            print("Web search is OFF.")
             return
         from search import fetch_results
         try:
             text = pyperclip.paste()
             if not text or not text.strip():
-                print("Clipboard is empty \u2014 copy your prompt first.")
+                print("Clipboard empty.")
                 return
-            print(f"Fetching results for: {text[:70]}\u2026")
+            print(f"Searching: {text[:70]}\u2026")
             results = fetch_results(text)
             if results:
                 pyperclip.copy(text + "\n\n" + results)
-                print("Done! Search results injected into clipboard \u2014 paste into LM Studio.")
+                print("Done \u2014 paste into LM Studio.")
             else:
-                print("No results returned from search.")
+                print("No results.")
         except Exception as exc:
-            print(f"Clipboard mode error: {exc}")
+            print(f"Clipboard error: {exc}")
 
     keyboard.add_hotkey("ctrl+shift+enter", on_hotkey)
     _clipboard_stop_event.wait()
-
     try:
         keyboard.remove_hotkey("ctrl+shift+enter")
     except Exception:
@@ -244,17 +237,3 @@ def clipboard_mode() -> None:
 
 def stop_clipboard_mode() -> None:
     _clipboard_stop_event.set()
-
-
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) > 1 and sys.argv[1] == "proxy":
-        start_proxy(11434)
-    else:
-        set_toggle(True)
-        clipboard_mode()
