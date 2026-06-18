@@ -1,19 +1,12 @@
 """
 injector.py — Proxy server and clipboard injection for WebSearch Toggle.
 
-KEY ARCHITECTURE CHANGE:
-  LM Studio's built-in chat UI cannot be redirected to a custom port.
-  It always sends to its own internal server.
+ARCHITECTURE:
+  LM Studio's built-in chat cannot be redirected. It always talks to :1234.
+  Solution: move LM Studio server to :11435, our proxy runs on :1234.
+  Chat -> :1234 (our proxy) -> :11435 (real LM Studio). Zero chat config.
 
-  Solution:
-    - Move LM Studio server to port 11435 (in LM Studio Developer tab)
-    - Our proxy runs on port 1234 (the default LM Studio port)
-    - LM Studio chat → port 1234 (our proxy) → port 11435 (real LM Studio)
-    - The chat UI never needs any reconfiguration!
-
-  For Open WebUI / external clients:
-    - Keep LM Studio on 1234, run proxy on 8000
-    - Point Open WebUI to localhost:8000
+  For Open WebUI: keep LM Studio on :1234, proxy on :8000.
 """
 
 import json
@@ -127,7 +120,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._error(500, str(exc))
 
     def do_GET(self):
-        """Forward GET requests too (e.g. /v1/models)."""
         try:
             target_port = self.server.target_port
             path = self.path or "/v1/models"
@@ -185,7 +177,6 @@ def _inject_search_results(data: dict) -> dict:
 
 
 def start_proxy(proxy_port: int, target_port: int) -> None:
-    """Start proxy on proxy_port, forwarding to target_port."""
     if not target_port:
         print("Proxy not started: target port unknown.")
         return

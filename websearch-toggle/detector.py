@@ -1,30 +1,37 @@
 """
-detector.py — Detect running local AI services (Ollama, LM Studio).
-
-Key fix in this version:
-- When the user points LM Studio to localhost:8000 (the proxy), the detector
-  must ALWAYS check the real service ports (1234, 11434) directly — never
-  probe port 8000. This way detection still works even when the proxy is running.
-- Added 'proxy_running' key to the result so the UI can show the correct status.
+detector.py — Detect Ollama / LM Studio on all known ports.
+Checks port 11435 first (our moved LM Studio port), then 1234 (default).
 """
 
 import requests
 
-_TIMEOUT = 2.0
+_TIMEOUT = 1.5
 
 _SERVICES = [
     {
         "service": "ollama",
         "port": 11434,
-        "probes": ["http://localhost:11434/api/tags"],
+        "probes": [
+            "http://localhost:11434/api/tags",
+            "http://localhost:11434/api/version",
+        ],
+    },
+    {
+        "service": "lmstudio",
+        "port": 11435,
+        "probes": [
+            "http://localhost:11435/v1/models",
+            "http://localhost:11435/api/v0/models",
+            "http://localhost:11435/api/v1/models",
+        ],
     },
     {
         "service": "lmstudio",
         "port": 1234,
         "probes": [
             "http://localhost:1234/v1/models",
+            "http://localhost:1234/api/v0/models",
             "http://localhost:1234/api/v1/models",
-            "http://localhost:1234/v1/chat/completions",
         ],
     },
 ]
@@ -32,31 +39,27 @@ _SERVICES = [
 
 def check_services(verbose: bool = False) -> dict:
     """
-    Probe the REAL service ports directly (never port 8000).
-    Always returns the actual LM Studio / Ollama port so the proxy
-    knows where to forward requests, regardless of what LM Studio's
-    chat UI is pointed at.
-
-    Returns:
-        {
-          'service': 'ollama' | 'lmstudio' | None,
-          'port':    int | None,
-        }
+    Probe all known ports. Returns first one that responds.
+    Never probes port 8000 (that's our own proxy).
     """
     for entry in _SERVICES:
         for url in entry["probes"]:
             try:
                 resp = requests.get(url, timeout=_TIMEOUT)
-                if resp.status_code in (200, 404):
-                    if verbose:
-                        print(f"\u2713 {entry['service'].capitalize()} detected "
-                              f"on port {entry['port']}")
-                    return {"service": entry["service"], "port": entry["port"]}
-            except requests.exceptions.RequestException:
+                if verbose:
+                    print(f"\u2713 {entry['service'].capitalize()} detected "
+                          f"on port {entry['port']} (HTTP {resp.status_code})")
+                return {"service": entry["service"], "port": entry["port"]}
+            except requests.exceptions.ConnectionError:
+                continue
+            except requests.exceptions.Timeout:
+                continue
+            except Exception:
                 continue
 
     if verbose:
-        print("\u2717 No AI service detected. Please start Ollama or LM Studio first.")
+        print("\u2717 No AI service detected.")
+        print("  \u2192 LM Studio: Developer tab \u2192 Server Settings \u2192 Port: 11435 \u2192 Start Server")
     return {"service": None, "port": None}
 
 
