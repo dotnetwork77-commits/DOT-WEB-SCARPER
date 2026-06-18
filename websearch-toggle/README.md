@@ -17,87 +17,106 @@ python main.py
 ## Requirements
 
 - Python 3.8 or higher
-- Ollama **or** LM Studio installed and running (can be started after the UI opens)
+- Ollama **or** LM Studio installed and running
 
 ---
 
-## How To Use
+## How To Use — Step by Step
 
-1. Run: `python main.py`
-2. A small floating window appears
-3. Choose your mode (see below)
-4. Click **Web Search: OFF** to toggle it ON (green)
-5. Start chatting — results are injected automatically
+### Step 1: Open LM Studio and load a model
 
-> **Tip:** You can launch the toggle before starting Ollama/LM Studio.  
-> The UI detects services in the background every 5 seconds.
+1. Open **LM Studio**
+2. Click the **Search** tab on the left
+3. Search for a model (e.g., `gemma`, `llama`, `mistral`)
+4. Click **Download** on the model you want
+5. Once downloaded, click the **Chat** tab on the left
+6. Select your model from the dropdown at the top
+7. Wait for it to load (you'll see "Model loaded" message)
+
+### Step 2: Start the LM Studio server
+
+1. Click the **Developer** tab on the left (looks like `</>`)
+2. You'll see a **Start Server** button — click it
+3. The button will change to **Stop Server** and show a green status
+4. Note the **Port** number (default is `1234`) — don't change it yet
+
+### Step 3: Run WebSearch Toggle
+
+1. Open **Command Prompt** or **Terminal**
+2. Type this command and press Enter:
+   ```
+   cd C:\Users\neera\DOT-WEB-SCARPER\websearch-toggle
+   python main.py
+   ```
+3. A small floating window will appear titled **"WebSearch Toggle"**
+
+### Step 4: Configure the toggle
+
+1. In the popup window, the top option **"LM Studio / Open WebUI (Proxy)"** should be selected (this is the recommended mode)
+2. The status line should show: `Service: lmstudio (real port: 1234)`
+3. Click the **red button** that says **"Web Search: OFF"** — it turns **green** and says **"Web Search: ON"**
+4. The hint will update to show a message about pointing LM Studio to localhost:8000
+
+### Step 5: Change LM Studio's port to 8000
+
+This is the most important step. The WebSearch Toggle runs a proxy on port 8000 that adds search results to your questions. You need to tell LM Studio to send requests to port 8000 instead of port 1234.
+
+1. Go back to LM Studio's **Developer** tab
+2. Find the **Port** field (it says `1234`)
+3. **Change it to `8000`**
+4. Click **Restart Server** (the Start Server button again)
+5. You'll see the green status reappear — now LM Studio's chat will send requests to the WebSearch Toggle proxy
+
+### Step 6: Chat normally
+
+1. Go to the **Chat** tab in LM Studio
+2. Type any question in the chat box, for example: `What is the capital of France?`
+3. Press **Enter**
+4. The toggle proxy will automatically:
+   - Take your question
+   - Search the internet for answers
+   - Add the search results to your question
+   - Forward it to Gemma/Llama in LM Studio
+5. Gemma will respond with an answer that includes web search information
+
+---
+
+## How It Works
+
+```
+You type a question → WebSearch Toggle (port 8000) adds search results
+         → Forwards to LM Studio (port 1234) → Gemma answers
+```
+
+The toggle acts as a **middleman**. Your question goes to port 8000 first, where web search results are attached, then it's sent to LM Studio's real port (1234). This all happens automatically in the background.
 
 ---
 
 ## Modes
 
-### Proxy Mode — for Open WebUI / AnythingLLM / any OpenAI-compatible client
+### Proxy Mode (Recommended) — Works with LM Studio's own chat
 
-| Step | What to do |
-|------|-----------|
-| 1 | Select **Open WebUI / Any LLM** in the toggle window |
-| 2 | Click the toggle button to turn Web Search **ON** |
-| 3 | In your chat app, set the API base URL to `http://localhost:8000` |
-| 4 | Chat normally — search results are silently appended to each prompt |
+**Best for:** Most users. No copy-paste needed. Just type and send.
 
-**How it works:**  
-A local HTTP proxy listens on port 8000 and forwards requests to your AI service.  
-When the toggle is ON, the last user message is enriched with up to 6 fresh  
-DuckDuckGo results (including source URLs) before being forwarded.  
-Streaming / SSE responses are passed through chunk-by-chunk so typing  
-indicators work correctly.
+| Step | Action |
+|------|--------|
+| 1 | Select **LM Studio / Open WebUI (Proxy)** in the toggle window |
+| 2 | Click toggle to turn it **ON** (green) |
+| 3 | In LM Studio Developer tab, change port to **8000**, restart server |
+| 4 | Type any question in LM Studio Chat and press Enter |
+| 5 | Web results are added automatically — no extra steps |
 
----
+### Clipboard Mode — Works with any app
 
-### Clipboard Mode — for LM Studio direct / any chat UI with copy-paste
+**Best for:** When you can't change the server port.
 
-| Step | What to do |
-|------|-----------|
-| 1 | Select **LM Studio / Direct** in the toggle window |
-| 2 | Click the toggle button to turn Web Search **ON** |
-| 3 | Copy your prompt to the clipboard |
+| Step | Action |
+|------|--------|
+| 1 | Select **LM Studio Direct (Clipboard)** |
+| 2 | Click toggle to turn it **ON** (green) |
+| 3 | Type your question in LM Studio and **copy it** (Ctrl+C) |
 | 4 | Press **Ctrl+Shift+Enter** |
-| 5 | Paste the enriched prompt into LM Studio (or anywhere else) |
-
----
-
-## Search Result Format
-
-Results injected into each prompt look like this:
-
-```
-[Web Search Results — 2025-06-17]
-Query: "latest Python release"
-
-1. Python 3.13 Release Notes
-   Python 3.13 was released on October 7 2024…
-   Source: https://docs.python.org/3/whatsnew/3.13.html
-
-2. …
-
-Note: Use the above results to inform your answer. Cite sources where relevant.
-```
-
----
-
-## Features
-
-- ✅ Free DuckDuckGo search — no API key needed
-- ✅ Auto-detects Ollama and LM Studio (polls every 5 s)
-- ✅ Real streaming support — SSE chunks forwarded correctly
-- ✅ CORS headers — works with browser-based WebUIs
-- ✅ Source URLs in results — model can cite references
-- ✅ Smart query cleaning — strips filler words for better retrieval
-- ✅ Thread-safe toggle — safe to click rapidly
-- ✅ Always-on-top floating window
-- ✅ Zero interference when OFF
-- ✅ Cross-platform (Windows, Mac, Linux)
-- ✅ Open source, MIT License
+| 5 | Go back to LM Studio, **paste** (Ctrl+V), press Enter |
 
 ---
 
@@ -105,18 +124,30 @@ Note: Use the above results to inform your answer. Cite sources where relevant.
 
 | Problem | Fix |
 |---------|-----|
-| "No AI service detected" | Start Ollama (`ollama serve`) or LM Studio, then wait 5 s |
-| Proxy returns 502/error | Make sure Ollama/LM Studio is actually running and responding |
-| Clipboard mode hotkey not working | Run with `sudo` / admin rights (keyboard library needs it on some OSes) |
-| Open WebUI shows CORS error | Update Open WebUI's API URL to `http://localhost:8000` |
-| Streaming broken | Make sure you're using the latest version of this file (old version buffered) |
+| **"No AI service detected"** | Make sure LM Studio is running and a model is loaded. Wait 5 seconds for the auto-detect. |
+| **LM Studio says "Connection refused"** | You changed the port to 8000 but the toggle isn't running. Run `python main.py` and turn the toggle ON first. |
+| **Gemma says "I can't access the internet"** | The search results are added to the question itself, not to Gemma. Gemma reads the search results from your question text. If you see "Web Search Results" in your question after sending, it's working. |
+| **Toggle button is disabled** | Click it to turn it ON (green). If it's red and says OFF, click it. |
+| **Clipboard mode hotkey not working** | Run Command Prompt as **Administrator** (right-click → Run as Administrator), then run `python main.py` again. |
+| **No search results appearing** | Check your internet connection. DuckDuckGo requires internet access. |
+
+---
+
+## Features
+
+- ✅ Free DuckDuckGo search — no API key needed
+- ✅ Auto-detects Ollama and LM Studio
+- ✅ Proxy mode — works with LM Studio's own chat
+- ✅ Clipboard mode — works with any app
+- ✅ Streaming support — responses appear as they're generated
+- ✅ Source URLs in results — model can cite references
+- ✅ Always-on-top floating window
+- ✅ Zero interference when OFF
+- ✅ Cross-platform (Windows, Mac, Linux)
+- ✅ Open source, MIT License
 
 ---
 
 ## License
 
 MIT License — free for everyone to use, modify, and share.
-
-## Issues
-
-Report issues at: https://github.com/YOUR_USERNAME/websearch-toggle/issues

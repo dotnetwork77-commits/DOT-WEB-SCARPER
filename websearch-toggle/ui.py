@@ -1,20 +1,5 @@
 """
 ui.py — Floating toggle window for WebSearch Toggle.
-
-Bugs fixed over original:
-1. _proxy_started / _clipboard_started globals are now instance-level so
-   they reset correctly if the window is recreated.
-2. Mode cannot be changed after a background thread has already started for
-   that mode — radio buttons lock once committed.
-3. Null-guard: Toggle ON is blocked if no service is detected yet; user sees
-   a helpful status message instead of a crash.
-4. Status label no longer calls check_services(verbose=True) — spam fixed by
-   using the new verbose=False default.
-5. Switching mode to clipboard when proxy is already running (or vice versa)
-   now warns the user rather than silently starting a second thread.
-6. Button shows a brief "Fetching\u2026" visual cue so users know something is
-   happening.
-7. Window close properly signals clipboard thread to stop.
 """
 
 import tkinter as tk
@@ -25,30 +10,30 @@ import detector
 
 
 def launch() -> None:
-    proxy_started    = False
+    proxy_started     = False
     clipboard_started = False
 
     service_info = detector.check_services(verbose=True)
 
     window = tk.Tk()
     window.title("WebSearch Toggle")
-    window.geometry("310x255")
+    window.geometry("320x270")
     window.attributes("-topmost", True)
     window.resizable(False, False)
 
-    # Mode selection
+    # ── Mode selection ──────────────────────────────────────────────────
     mode_frame = ttk.LabelFrame(window, text="How are you using it?", padding=10)
     mode_frame.pack(fill="x", padx=10, pady=5)
 
     mode = tk.StringVar(value="proxy")
-    rb_proxy = ttk.Radiobutton(mode_frame, text="Open WebUI / Any LLM (Proxy)",
+    rb_proxy = ttk.Radiobutton(mode_frame, text="LM Studio / Open WebUI (Proxy \u2190 recommended)",
                                variable=mode, value="proxy")
-    rb_clip  = ttk.Radiobutton(mode_frame, text="LM Studio / Direct (Clipboard)",
+    rb_clip  = ttk.Radiobutton(mode_frame, text="LM Studio Direct (Clipboard \u2014 manual)",
                                variable=mode, value="clipboard")
     rb_proxy.pack(anchor="w")
     rb_clip.pack(anchor="w")
 
-    # Toggle button
+    # ── Toggle button ───────────────────────────────────────────────────
     toggle_frame = tk.Frame(window)
     toggle_frame.pack(fill="x", padx=10, pady=5)
 
@@ -61,15 +46,17 @@ def launch() -> None:
     )
     toggle_button.pack(fill="x")
 
-    # Status / hint labels
+    # ── Status labels ───────────────────────────────────────────────────
     svc_name = service_info["service"] or "Not detected"
-    status_label = ttk.Label(window, text=f"Service: {svc_name}")
+    status_label = ttk.Label(window,
+        text=f"Service: {svc_name}  (real port: {service_info['port'] or '\u2014'})")
     status_label.pack(pady=2)
 
-    hint_label = ttk.Label(window, text="", foreground="gray", wraplength=290)
-    hint_label.pack(pady=2)
+    hint_label = ttk.Label(window, text="", foreground="#1a6e2e", wraplength=300,
+                           font=("Helvetica", 9, "bold"))
+    hint_label.pack(pady=1)
 
-    warn_label = ttk.Label(window, text="", foreground="#c0392b", wraplength=290)
+    warn_label = ttk.Label(window, text="", foreground="#c0392b", wraplength=300)
     warn_label.pack(pady=1)
 
     def set_hint(*_):
@@ -79,23 +66,27 @@ def launch() -> None:
             )
         else:
             hint_label.config(
-                text="Proxy mode: point your app to localhost:8000"
+                text="Point LM Studio chat to localhost:8000\n"
+                     "(LM Studio Developer tab \u2192 change API port to 8000)"
             )
         warn_label.config(text="")
 
     mode.trace_add("write", set_hint)
     set_hint()
 
+    # ── Background service polling ──────────────────────────────────────
     def update_status():
         nonlocal service_info
         info = detector.check_services(verbose=False)
         service_info = info
-        label_text = f"Service: {info['service'] or 'Not detected'}"
-        status_label.config(text=label_text)
+        svc  = info["service"] or "Not detected"
+        port = info["port"] or "\u2014"
+        status_label.config(text=f"Service: {svc}  (real port: {port})")
         window.after(5000, update_status)
 
     window.after(5000, update_status)
 
+    # ── Toggle logic ────────────────────────────────────────────────────
     def toggle_button_click():
         nonlocal proxy_started, clipboard_started
 
@@ -105,20 +96,17 @@ def launch() -> None:
         if turning_on:
             if mode.get() == "proxy" and not service_info.get("port"):
                 warn_label.config(
-                    text="\u26a0 No AI service detected. Start Ollama or LM Studio first."
+                    text="\u26a0 LM Studio not detected on port 1234.\n"
+                         "Start LM Studio first, then try again."
                 )
                 return
 
             if mode.get() == "clipboard" and proxy_started:
-                warn_label.config(
-                    text="\u26a0 Proxy is already running on :8000. Restart the app to switch modes."
-                )
+                warn_label.config(text="\u26a0 Proxy already running. Restart app to switch modes.")
                 return
 
             if mode.get() == "proxy" and clipboard_started:
-                warn_label.config(
-                    text="\u26a0 Clipboard listener is already running. Restart the app to switch modes."
-                )
+                warn_label.config(text="\u26a0 Clipboard listener already running. Restart app to switch modes.")
                 return
 
             toggle_button.config(text="Web Search: ON", bg="#4CAF50")
@@ -134,7 +122,11 @@ def launch() -> None:
                     args=(service_info["port"],),
                     daemon=True,
                 ).start()
-                hint_label.config(text="Proxy running on :8000 \u2014 point your app there.")
+                hint_label.config(
+                    text="\u2713 Proxy running on :8000 \u2192 forwarding to :"
+                         + str(service_info["port"])
+                         + "\nPoint LM Studio chat to localhost:8000"
+                )
 
             elif mode.get() == "clipboard" and not clipboard_started:
                 clipboard_started = True
@@ -144,7 +136,6 @@ def launch() -> None:
                     target=injector.clipboard_mode,
                     daemon=True,
                 ).start()
-
         else:
             toggle_button.config(text="Web Search: OFF", bg="#d9534f")
             injector.set_toggle(False)
