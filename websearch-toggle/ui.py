@@ -154,15 +154,18 @@ def launch() -> None:
         m = mode.get()
 
         if turning_on:
-            if m in ("lmstudio_direct", "openwebui"):
-                port = service_info.get("port")
-                if not port:
+            port = service_info.get("port")
+
+            # First-time startup: check guards and launch threads
+            if not proxy_started and not clipboard_started:
+                if m in ("lmstudio_direct", "openwebui") and not port:
                     warn_lbl.config(
                         text="\u26a0 Start LM Studio server first!\n"
                              "Developer tab \u2192 Port 11435 \u2192 Start Server"
                     )
                     return
-                if m == "lmstudio_direct" and port != 11435:
+
+                if m == "lmstudio_direct" and port and port != 11435:
                     warn_lbl.config(
                         text="\u26a0 Change LM Studio server port to 11435 first!\n"
                              "Developer tab \u2192 Server Settings \u2192 Port: 11435\n"
@@ -170,49 +173,50 @@ def launch() -> None:
                     )
                     return
 
-            if proxy_started or clipboard_started:
-                warn_lbl.config(text="\u26a0 Already running. Restart app to change mode.")
-                return
+                for rb in all_rbs:
+                    rb.config(state="disabled")
 
+                if m == "lmstudio_direct":
+                    proxy_started = True
+                    threading.Thread(
+                        target=injector.start_proxy,
+                        args=(1234, 11435),
+                        daemon=True,
+                    ).start()
+
+                elif m == "openwebui":
+                    proxy_started = True
+                    threading.Thread(
+                        target=injector.start_proxy,
+                        args=(8000, port),
+                        daemon=True,
+                    ).start()
+
+                elif m == "clipboard":
+                    clipboard_started = True
+                    threading.Thread(
+                        target=injector.clipboard_mode,
+                        daemon=True,
+                    ).start()
+
+            # Re-enable injection (toggle was OFF → ON)
             toggle_btn.config(text="Web Search: ON", bg="#4CAF50")
             warn_lbl.config(text="")
             injector.set_toggle(True)
-            for rb in all_rbs:
-                rb.config(state="disabled")
 
             if m == "lmstudio_direct":
-                proxy_started = True
-                threading.Thread(
-                    target=injector.start_proxy,
-                    args=(1234, 11435),
-                    daemon=True,
-                ).start()
                 info_lbl.config(text=(
                     "\u2713 Proxy running: :1234 \u2192 :11435\n\n"
                     "Just chat in LM Studio normally.\n"
                     "Every message gets live web results. \u2713"
                 ))
-
             elif m == "openwebui":
-                proxy_started = True
-                threading.Thread(
-                    target=injector.start_proxy,
-                    args=(8000, service_info["port"]),
-                    daemon=True,
-                ).start()
                 info_lbl.config(text=(
-                    f"\u2713 Proxy: :8000 \u2192 :{service_info['port']}\n\n"
+                    f"\u2713 Proxy: :8000 \u2192 :{port}\n\n"
                     "Open WebUI \u2192 Settings \u2192 API URL:\n"
                     "  http://localhost:8000\n\n"
                     "Chat in Open WebUI \u2014 automatic \u2713"
                 ))
-
-            elif m == "clipboard":
-                clipboard_started = True
-                threading.Thread(
-                    target=injector.clipboard_mode,
-                    daemon=True,
-                ).start()
 
         else:
             toggle_btn.config(text="Web Search: OFF", bg="#d9534f")
